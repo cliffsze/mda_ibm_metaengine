@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/python
 import sys
 import subprocess
 import re
@@ -43,7 +43,7 @@ class gpfs_class:
         # this is the base gpfs policy used in mmapplypolicy
         base_policy = """
 define(LAST_MODIFIED,(DAYS(CURRENT_TIMESTAMP)-DAYS(MODIFICATION_TIME)))
-RULE EXTERNAL LIST 'AllFiles' EXEC '/usr/local/bin/python cad_gpfs_exec.py' ESCAPE '%/, '
+RULE EXTERNAL LIST 'AllFiles' EXEC 'python cad_gpfs_exec.py' ESCAPE '%/, '
 RULE 'ListAllFiles' LIST 'AllFiles' DIRECTORIES_PLUS
 SHOW( VARCHAR( FILESET_NAME )   || ' ' ||
       VARCHAR( POOL_NAME )      || ' ' ||
@@ -78,7 +78,7 @@ SHOW( VARCHAR( FILESET_NAME )   || ' ' ||
             nodelist = jdata['nodelist']
             debuglevel = jdata['debuglevel']
             redis_hostname = jdata['redis_hostname']
-            rc = meta_api.init_redis_handle(redis_hostname)
+            mtime_rule = "(LAST_MODIFIED <= "+str(days)+")"
 
         except KeyError:
             sys.exit("FATAL - json file config key missing")
@@ -132,8 +132,7 @@ SHOW( VARCHAR( FILESET_NAME )   || ' ' ||
         #   change_timed       :int 12
         #   access_timed       :int 13
         #   dmapi_state        :'R','P',"M' 14
-
-        rc = meta_api.init_redis_handle("localhost")
+    
         vcfc = cad_analyze_vcf.vcf_class()
         with open(filelist, 'r') as fh:
             for line in fh:
@@ -149,8 +148,7 @@ SHOW( VARCHAR( FILESET_NAME )   || ' ' ||
                     continue
                 
                 # *** SCHEMA DEFINITION ***
-                f = p.group(15).lstrip()
-                r = {'filename_hash'      : hashlib.sha224(f).hexdigest(),
+                r = {'filename_hash'      : hashlib.sha224(p.group(15)).hexdigest(),
                      'fileset_name'       : p.group(4),
                      'pool_name'          : p.group(5),
                      'file_size'          : p.group(6),
@@ -162,9 +160,10 @@ SHOW( VARCHAR( FILESET_NAME )   || ' ' ||
                      'change_timed'       : p.group(12),
                      'access_timed'       : p.group(13),
                      'dmapi_state'        : p.group(14),
-                     'file_name'          : f}
+                     'file_name'          : p.group(15).lstrip()}
 
-                rc = meta_api.add_new_record(str(r))
+                print r
+                rc = meta_api.meta_add_new_rec(r)
                 print "rc:", rc
                 vcfc.process_vcf_file(p.group(15))
         fh.close()
