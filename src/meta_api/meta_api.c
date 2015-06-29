@@ -1,14 +1,16 @@
-/* Filename : meta_api.c                                            */
-/* Purpose  : Interface module allowing python code to access the   */
-/*            Meta Engine API                                       */
-/*                                                                  */
-/* Change Log:                                                      */
-/* 20150515 - initial release                                       */
-/*                                                                  */
-/* Compile command:                                                 */
-/* cd /root/pyproj/meta_api                                         */    
-/* gcc -fPIC -shared -I/usr/local/include/python2.7 -lpython2.7 \   */
-/* -ometa_api.so meta_api.c libmetaengine.a ../hiredis/libhiredis.a */
+// Filename : meta_api.c
+// Purpose  : Interface module allowing python code to access the Meta Engine API
+//
+// Change Log:
+// 20150515 - initial release
+// 20150625 - rewritten pyAddNewRecord
+// 20150625 - added pyAppendToRecord, pyGetUnprocessedRecord
+// 21050628 - added debugMode to manage printf to stdout
+//
+// Compile command:
+// cd /root/pyproj/meta_api    
+// gcc -fPIC -shared -I/usr/local/include/python2.7 -lpython2.7 \ 
+// -ometa_api.so meta_api.c libmetaengine.a ../hiredis/libhiredis.a
 
 
 
@@ -16,109 +18,211 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../hiredis/hiredis.h"
+#include "/root/pyproj/hiredis/hiredis.h"
 #include "metaengine.h"
 
 
 
-/* global variables */
-
-
-
+// global variables
 redisContext *dbhandle;
-int recid;
+int *debugMode;    // 1=true, 0=false
 
 
-
-/* python def : rc = init_redis_handle( hostname ) */
-
+// python def : rc = init_redis_handle( hostname, debug_mode )
+// rc: 0=success, 1=input format error
 
 
 static PyObject * pyInitRedisHandle(PyObject *self, PyObject *args) {
 
     char *hostname;
+    int* debug;
 
-    if (!PyArg_ParseTuple(args, "s", &hostname)) {
+    if (!PyArg_ParseTuple(args, "si", &hostname, &debug)) {
         return Py_BuildValue("i", 1);   /* ERROR - PyArg_ParseTuple */
     }
     dbhandle = MEconnectRedis((char*)hostname, 6379);
+    debugMode = debug;
+    if (debugMode) {
+        printf("pyInitRedisHandle: debugMode=%i\n", debugMode);
+    }
+
     return Py_BuildValue("i", 0);       /* SUCCESS */
 }
 
 
 
-/* python def : rc = add_new_record( dict ) */
+// python def : rc = add_new_record( dict )
+// loop through input dict object and add each kv-pair to the meta engine as one record
+// rc: 0=success, 1=input format error, 2=input format error - dict iterator
 
 
 
 static PyObject * pyAddNewRecord(PyObject *self, PyObject *args) {
 
-    int len, kvcount, kvstate, i, j;
-    char key[1024], val[1024];
-    char *dict;
+    PyObject* py_dict;
+    PyObject* py_iter;
+    PyObject* py_key;
+    PyObject* py_val;
 
-    /* retrieve string in python dict format */
-    if (!PyArg_ParseTuple(args, "s", &dict)) {
-        return Py_BuildValue("i", 1);   /* ERROR - PyArg_ParseTuple */
+    // retrieve dictionary object
+    if (!PyArg_ParseTuple(args, "O!", &PyDict_Type, &py_dict)) {
+        return Py_BuildValue("i", 1);   // ERROR - PyArg_ParseTuple
     }
 
-    /* string parsing format: {'four': 4, 'three': 3, 'five': 5} */
-    len = strlen(dict);
-    i = 0;         /* index into dict */
-    kvcount = 0;
-    kvstate = 0;   /* 0={, 1=key, 2=val, 3=end */
-    
-    for (i=0; i<len; i++) {
-        if (kvstate == 0) {             /* kvstate=0, parse curly bracket */
-            if (dict[i] == '{') {
-                kvstate = 1;
-                j = 0;
-            }
-        }
-        else if (kvstate == 1) {        /* kvstate=1, parse for key */
-            if (dict[i] == ':') {       /* delim = : */
-                key[j] = 0x00;
-                kvstate = 2;
-                j = 0;
-            }
-            else if (j>0 || dict[i] != 0x20) {
-                key[j] = dict[i];
-                j++;
-            }
-        }
-        else if (kvstate == 2) {        /* kvstate=2, parse for value */
-            if (dict[i] == ',' || dict[i] == '}') {   /* delim = , or } */
-                val[j] = 0x00;
-                
-                /* add key val pair into meta engine */
-                kvcount++;
-                printf("kv: %d %s %s\n", kvcount, key, val);
-                if (kvcount == 1) {
-                    recid = MEaddNewKeyValue(dbhandle, key, val);
-                }
-                else {
-                    MEaddKeyValue(dbhandle, recid, key, val);
-                }
-
-                /* continue if comma, done if curly bracket */
-                kvstate = 3;
-                if (dict[i] == ',') {
-                    kvstate = 1;
-                    j = 0;
-                }
-            }
-            else if (j>0 || dict[i] != 0x20) {
-                val[j] = dict[i];
-                j++;
-            }
-        }
+    // retrieve iterator
+    py_iter = PyObject_GetIter(py_dict);
+    if (!py_iter) { 
+        return Py_BuildValue("i", 2);   // ERROR - Not an iterator
     }
-    if (kvstate == 3) {                 /* kvstate=3, end curly bracket found */
-        return Py_BuildValue("i", 0);   /* SUCCESS */
+
+    // loop through key-value pairs
+    int recid;
+    int kvcount = 0;
+    while (py_key = PyIter_Next(py_iter)) {
+        py_val = PyDict_GetItem(py_dict, py_key);
+
+    char * key = PyString_AsString(py_key);
+    char * val = PyString_AsString(py_val);
+    if (debugMode) {
+        printf("pyAddNewRecord: %s - %s\n", key, val);
+    }
+
+    // add kv pair into meta engine
+    kvcount++;
+    if (kvcount == 1) {
+        recid = MEaddNewKeyValue(dbhandle, key, val);
     }
     else {
-        return Py_BuildValue("i", 2);   /* ERROR - dict format error */
+        MEaddKeyValue(dbhandle, recid, key, val);
     }
+    Py_DECREF(py_key);
+}
+Py_DECREF(py_iter);
+if (debugMode) {
+    printf("pyAddNewRecord: total kv count: %i\n", kvcount);
+}
+return Py_BuildValue("i", 0);   // SUCCESS
+} 
+
+
+
+// python def : rc = append_to_record( recid, dict )
+// Append new fields into an existing record. New fields are stored in the dict object as KV pairs
+// rc: 0=success, 1=input format error, 2=recid not found, 3=input format error - dict iterator
+
+
+
+static PyObject * pyAppendToRecord(PyObject *self, PyObject *args) {
+
+    PyObject* py_dict;
+    PyObject* py_iter;
+    PyObject* py_key;
+    PyObject* py_val;
+
+    int recid, rc;
+    char *allData;
+    unsigned size;
+
+
+    // retrieve record id and dictionary object
+    if (!PyArg_ParseTuple(args, "iO!", &recid, &PyDict_Type, &py_dict)) {
+        return Py_BuildValue("i", 1);   // ERROR - PyArg_ParseTuple
+    }
+
+    // abort if record id does not exist
+    rc = MEgetAllFieldsById(dbhandle, recid, &allData, &size);
+    if (size == 0) {
+        return Py_BuildValue("i", 2);   // ERROR - record ID not found   
+    }
+
+    // retrieve iterator
+    py_iter = PyObject_GetIter(py_dict);
+    if (!py_iter) { 
+        return Py_BuildValue("i", 3);   // ERROR - Not an iterator
+    }
+
+    // loop through key-value pairs and append to record
+    int kvcount = 0;
+    while (py_key = PyIter_Next(py_iter)) {
+        py_val = PyDict_GetItem(py_dict, py_key);
+
+    char * key = PyString_AsString(py_key);
+    char * val = PyString_AsString(py_val);
+    if (debugMode) {
+        printf("pyAppendToRecord: %s - %s\n", key, val);
+    }
+
+    // add kv pair into meta engine
+    kvcount++;
+    MEaddKeyValue(dbhandle, recid, key, val);
+    Py_DECREF(py_key);
+}
+Py_DECREF(py_iter);
+if (debugMode) {
+    printf("pyAppendToRecord: total kv count: %i\n", kvcount);
+}
+return Py_BuildValue("i", 0);   // SUCCESS
+} 
+
+
+
+// python def : (rc, dict) = get_unprocessed_record( search_key, search_value, except_key )
+// find records matches the search_key and not the except_key, return list of items
+// rc: 0=success, 1=input format error, 2=search_key - no match found
+// dict: (recid: recid[searchKey] ...)
+
+
+
+static PyObject * pyGetUnprocessedRecord(PyObject *self, PyObject *args) {
+
+    // retrieve 3 input parameters in char * format
+    char *searchKey, *searchVal, *exceptKey;
+    if (!PyArg_ParseTuple(args, "sss", &searchKey, &searchVal, &exceptKey)) {
+        return Py_BuildValue("i", 1);   // ERROR - PyArg_ParseTuple
+    }
+
+    // get all recID that matches the searckKey and searchVal
+    int *allId;    
+    unsigned size = 0;
+    unsigned unprocessed_record_count = 0;
+    MEsearchId(dbhandle, searchKey, searchVal, &allId, &size);
+    if (size == 0) {
+        return Py_BuildValue("i", 2);   // ERROR - no record found
+    }
+
+    // build output dict object
+    int rc, i;
+    long recid;
+    char *value=NULL;
+    PyObject* py_dict;
+    PyObject* py_key;
+    PyObject* py_val;
+    py_dict = PyDict_New();
+
+    // loop through all recIDs
+    for ( i=0; i<size; ++i ) {
+        recid = *(allId+i);
+        rc = MEgetSingleFieldById(dbhandle, recid, exceptKey, &value);
+
+        // exceptKey not found, create kv and add to py_dict (recid: recid[searchKey])
+        if (rc > 0 || value == 0) {
+            unprocessed_record_count += 1;
+            rc = MEgetSingleFieldById(dbhandle, recid, searchKey, &value);
+            py_key = PyInt_FromLong(recid);
+            py_val = PyString_FromString(value);
+            PyDict_SetItem(py_dict, py_key, py_val);
+        }
+        free(value);
+    }
+    free(allId);
+    
+    if (debugMode) {
+        printf("pyGetUnprocessedRecord: total records: %i\n", size);
+        printf("pyGetUnprocessedRecord: unprocessed records: %i\n", unprocessed_record_count);
+    }
+
+    // return 2 parameters: rc, dict
+    return Py_BuildValue("iO", 0, py_dict);
 }
 
 
@@ -130,6 +234,8 @@ static PyObject * pyAddNewRecord(PyObject *self, PyObject *args) {
 static PyMethodDef MetaApiMethods[] = {
     {"init_redis_handle", pyInitRedisHandle, METH_VARARGS},
     {"add_new_record", pyAddNewRecord, METH_VARARGS},
+    {"append_to_record", pyAppendToRecord, METH_VARARGS},
+    {"get_unprocessed_record", pyGetUnprocessedRecord, METH_VARARGS},
     {NULL, NULL}
 };
 
