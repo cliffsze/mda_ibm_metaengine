@@ -44,19 +44,19 @@ class dicom_class:
 
 
     def __init__(self):
- 
+
         # initialize dicom_phi_dict
         global dicom_phi_dict
         dicom_phi_dict = dicom_phi_rules.init_phi_dict()
-        
-        
-    def append_medb_record(self, recid, file_format, status, phi_rule, undef_rule):
+
+
+    def append_medb_record(self, recid, status, phi_rule, undef_rule):
 
         # *** SCHEMA DEFINITION ***
         d = {}
-        d['file_format']              = file_format    # vcf, dicom, file_not_found, duplicate, none
+        d['file_format']              = 'dicom'
         d['privacy_timestamp']        = str(datetime.datetime.now())
-        d['privacy_rule_status']      = status
+        d['privacy_rule_status']      = status    # is_phi, not_phi, indeterminate, file_not_found, duplicate
         d['privacy_dicom_phi_rule']   = phi_rule
         d['privacy_dicom_unref_rule'] = undef_rule
 
@@ -102,7 +102,7 @@ class dicom_class:
                 # dicom analysis successful
                 if rc == 0:
                     succ += 1
-                    rc = self.append_medb_record(recid, 'dicom', status, phi_rule, undef_rule)
+                    rc = self.append_medb_record(recid, status, phi_rule, undef_rule)
                     if rc != 0:
                         logging.error("query_medb_dicom: append record failed, recid=" + recid)
 
@@ -113,17 +113,17 @@ class dicom_class:
                 # dicom file not found
                 else:
                     fail += 1
-                    rc = self.append_medb_record(recid, 'file_not_found', 'none', 'none', 'none')
+                    rc = self.append_medb_record(recid, 'file_not_found', 'none', 'none')
 
             # this is a duplicate file name
             else:
                 dupl += 1
-                rc = self.append_medb_record(recid, 'duplicate', 'none', 'none', 'none')
+                rc = self.append_medb_record(recid, 'duplicate', 'none', 'none')
                 if rc != 0:
                     logging.error("query_medb_dicom: append record failed, recid=" + recid)
 
         logging.info("query_medb_dicom: completed, succ="
-        + str(succ) + ", fail=" + str(fail) + ", dupl=" + str(dupl))
+                     + str(succ) + ", fail=" + str(fail) + ", dupl=" + str(dupl))
 
         return 0
         #
@@ -132,20 +132,20 @@ class dicom_class:
         #
         #
     def process_dicom_file(self, dicom_file):
-        
+
         global dicom_phi_dict
         phi_rule = list()
         undef_rule = list()
-        
+
         # extract dicom dataset
         try:
+            logging.info("process_dicom_file: " + dicom_file)
             dataset = dicom.read_file(dicom_file)
-            logging.debug("process_dicom_file: " + dicom_file)
 
         except:
             logging.error("process_dicom_file: file open error: " + dicom_file)
-            return 1
-        
+            return 1, 'file_not_found', 'none', 'none'
+
         tags_total = len(dataset)
         tags_blank = 0
         tags_nokey = 0
@@ -173,7 +173,7 @@ class dicom_class:
             is_phi = rule[0][4]
             anon_rule = lrstrip(rule[0][5])
             anon_rule = anon_rule.lower()
-            
+
             # extract year if anon_rule is "incrementdate"
             # Format: yyyymmdd
             if "incrementdate" in anon_rule:
@@ -187,16 +187,16 @@ class dicom_class:
             if not is_phi:
                 tags_nophi += 1
                 continue
-                
+
             # tag is phi and
             # anon_rule = "" or
             # anon_rule = "remove" or
             # (val = ""  and anon_rule = "empty") or
             # (anon_rule = "incrementdate" and year of val > 1850)
             elif (len(anon_rule) == 0 
-                or "remove" in anon_rule
-                or (len(val) > 0 and "empty" in anon_rule)
-                or ("incrementdate" in anon_rule and yyyy > 1850)):
+                  or "remove" in anon_rule
+                  or (len(val) > 0 and "empty" in anon_rule)
+                  or ("incrementdate" in anon_rule and yyyy > 1850)):
                 phi_rule.append(tag)
                 tags_isphi += 1
 
@@ -205,21 +205,22 @@ class dicom_class:
                 phi_rule.append(tag)
                 tags_isphi += 1
 
-
-        # we are done, print debug message
-        logging.debug("tag counts - total:" + str(tags_total) + " blank:" + str(tags_blank)
-        + " nokey:" + str(tags_nokey) + " isphi:" + str(tags_isphi) + " nophi:" + str(tags_nophi))
-
+        # error if tag counts don't match
         if tags_total != (tags_blank + tags_nokey + tags_isphi + tags_nophi):
             logging.error("determine_phi_status: tag count mismatch")      
-            return 3
-        
+            return 2, 'indeterminate', 'none', 'none'
+
         # construct return parameters
         if tags_isphi == 0:
             status = "not_phi"
         else:
             status = "is_phi"
-            
+
+        # we are done, print status and reason
+        logging.info("process_dicom_file: status: " + status)
+        logging.info("process_dicom_file: reason: tag counts - total:" + str(tags_total) + " blank:" + str(tags_blank)
+                     + " nokey:" + str(tags_nokey) + " isphi:" + str(tags_isphi) + " nophi:" + str(tags_nophi))
+
         return 0, status, str(phi_rule), str(undef_rule)
         #
         #
@@ -244,7 +245,7 @@ if __name__ == "__main__":
     log_level = cad_config.scheduler['log_level'].upper()
     root = logging.getLogger()
     root.setLevel(log_level)
-    
+
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(log_level)
     formatter = logging.Formatter(

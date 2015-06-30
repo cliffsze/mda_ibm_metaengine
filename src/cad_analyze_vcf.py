@@ -31,15 +31,14 @@ class vcf_class:
         return
 
 
-    def append_medb_record(self, recid, file_format, status, reason):
+    def append_medb_record(self, recid, status, reason):
 
         # *** SCHEMA DEFINITION ***
         d = {}
-        d['file_format']         = file_format    # vcf, dicom, file_not_found, duplicate, none
+        d['file_format']         = 'vcf'  
         d['privacy_timestamp']   = str(datetime.datetime.now())
-        d['privacy_rule_status'] = status
+        d['privacy_rule_status'] = status    # is_pii, not_pii, indeterminate, file_not_found, duplicate
         d['privacy_rule_reason'] = reason
-        
         return meta_api.append_to_record(recid, d)
 
     
@@ -75,27 +74,23 @@ class vcf_class:
             # analyze new vcf file
             if not file in processed_items:
                 (rc, status, reason) = self.process_vcf_file(file)
-                
-                # vcf analysis successful
                 if rc == 0:
                     succ += 1
-                    rc = self.append_medb_record(recid, 'vcf', status, reason)
-                    if rc != 0:
-                        logging.error("query_medb_vcf: append record failed, recid=" + recid)
-                    
-                    # append successful, add to processed_items list to detect duplicates
-                    if rc == 0:
-                        processed_items.append(file)
-                        
-                # vcf file not found 
                 else:
                     fail += 1
-                    rc = self.append_medb_record(recid, 'file_not_found', 'none', 'none')
-            
+                
+                rc = self.append_medb_record(recid, status, reason)
+                if rc != 0:
+                    logging.error("query_medb_vcf: append record failed, recid=" + recid)
+                
+                # append successful, add to processed_items list to detect duplicates
+                if rc == 0:
+                    processed_items.append(file)
+  
             # this is a duplicate file name
             else:
                 dupl += 1
-                rc = self.append_medb_record(recid, 'duplicate', 'none', 'none')
+                rc = self.append_medb_record(recid, 'duplicate', 'none')
                 if rc != 0:
                     logging.error("query_medb_vcf: append record failed, recid=" + recid)
                 
@@ -113,13 +108,13 @@ class vcf_class:
         try:
             vcf_file = vcf_file.lstrip()
             vcf_file = vcf_file.rstrip()
+            logging.info("process_vcf_file: " + vcf_file)
             vcf_reader = vcf.Reader(open(vcf_file, 'r'))
-            logging.debug("process_vcf_file: " + vcf_file)
             
         except:
-            logging.error("process_vcf_file: file open error: " + vcf_file)
-            return 1
-
+            logging.error("process_vcf_file: file open or read error: " + vcf_file)
+            return 1, 'indeterminate', 'none'
+        
         # determine if vcf is PII
         pii_thres = float(cad_config.vcf['pii_germlinesomatic_pct'])/100
         logging.debug("process_vcf_file: pii_germlinesomatic threshold: " + str(pii_thres))
@@ -129,22 +124,35 @@ class vcf_class:
             total_samples = 0
             total_germlinesomatic = 0
             for record in vcf_reader:
-                total_samples += 1
-                if record.samples[0]['SS'] == 1:
-                    total_germlinesomatic += 1
-
-            if (float(total_germlinesomatic)/float(total_samples) > pii_thres):
+                for key in record._sample_indexes:
+                    idx = record._sample_indexes[key]
+                    total_samples += 1
+                    if record.samples[idx]['SS'] == 1:
+                        total_germlinesomatic += 1
+            
+            if total_samples == 0:
+                total_samples = 1
+            germlinesomatic_ratio = float(total_germlinesomatic)/float(total_samples)
+            logging.debug("process_vcf_file: germlinesomatic_ratio=" + str(germlinesomatic_ratio))
+            if ( germlinesomatic_ratio > pii_thres):
                 status = "is_pii"
             else:
                 status = "not_pii"
             reason = ("total germlinesomatic/total samples > " + str(pii_thres))
+            rc = 0
+
+        except ValueError:
+            status = "indeterminate"
+            reason = "ValueError while parsing"
+            rc = 2
 
         except KeyError:
             status = "not_pii"
             reason = "FORMAT ID=SS definition not found"
-
-        logging.debug("process_vcf_file: status: " + status + ", reason: " + reason)
-        return 0, status, reason
+            rc = 0
+            
+        logging.info("process_vcf_file: status: " + status + ", reason: " + reason)
+        return rc, status, reason
 #
 #
 # main program (for unit testing)
