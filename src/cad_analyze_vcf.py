@@ -117,7 +117,7 @@ class vcf_class:
         
         # determine if vcf is PII
         pii_thres = float(cad_config.vcf['pii_germlinesomatic_pct'])/100
-        logging.debug("process_vcf_file: pii_germlinesomatic threshold: " + str(pii_thres))
+        logging.debug("+++ pii_germlinesomatic threshold: " + str(pii_thres))
         
         try:
             fmt = vcf_reader.formats['SS']
@@ -133,7 +133,7 @@ class vcf_class:
             if total_samples == 0:
                 total_samples = 1
             germlinesomatic_ratio = float(total_germlinesomatic)/float(total_samples)
-            logging.debug("process_vcf_file: germlinesomatic_ratio=" + str(germlinesomatic_ratio))
+            logging.debug("+++ germlinesomatic_ratio=" + str(germlinesomatic_ratio))
             if ( germlinesomatic_ratio > pii_thres):
                 status = "is_pii"
             else:

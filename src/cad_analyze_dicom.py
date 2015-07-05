@@ -23,6 +23,7 @@ import dicom_phi_rules
 
 # Change Log:
 # 20150613 - initial release
+# 20150702 - tag converted to lowercae alphabets before dict lookup
 #
 #
 # functions
@@ -126,11 +127,11 @@ class dicom_class:
                      + str(succ) + ", fail=" + str(fail) + ", dupl=" + str(dupl))
 
         return 0
-        #
-        #
-        # (rc, status, reason) = process_dicom_file(dicom_file)
-        #
-        #
+    #
+    #
+    # (rc, status, reason) = process_dicom_file(dicom_file)
+    #
+    #
     def process_dicom_file(self, dicom_file):
 
         global dicom_phi_dict
@@ -156,13 +157,14 @@ class dicom_class:
         # Format: [tag] [Name] [VR] [value]
         for data_element in dataset:
 
-            # extract tag and value
-            tag = str(data_element.tag)
+            # extract tag and value (compare tag as lowercase)
+            tag = str(data_element.tag).lower()
             tag = tag.replace(", ", ",")            
             val = lrstrip(str(data_element.value))    
 
             # tag does not exist in phi rule list (no DE-identification rule)
             if not tag in dicom_phi_dict:
+                logging.debug("+++ unref tag: " + tag + ", name: " + data_element.name)
                 undef_rule.append(tag)
                 tags_nokey += 1
                 continue
@@ -170,7 +172,7 @@ class dicom_class:
             # extract is_phi and anon_rule
             # Format: [Name] [VR] [VM] [version] [is_phi] [anonymization_rule]
             rule = dicom_phi_dict[tag]
-            is_phi = rule[0][4]
+            is_phi = rule[0][4]    # this is a boolean value
             anon_rule = lrstrip(rule[0][5])
             anon_rule = anon_rule.lower()
 
@@ -180,12 +182,19 @@ class dicom_class:
                 try:
                     yyyy = int(val[:4])
                 except:
-                    logging.error("process_dicom_file: incorrect date: " + tag + "=" + str(val))
+                    logging.error("+++ incorrect date: " + tag + "=" + str(val))
                     yyyy = 1851
 
             # tag is not phi
             if not is_phi:
                 tags_nophi += 1
+                continue
+
+            # tag is phi, val is empty, anon_rule is empty()"
+            if (len(val) == 0 and "empty" in anon_rule):
+                logging.debug("+++ isphi (value is empty) tag: " + tag + ", name: " 
+                              + data_element.name + ", anon_rule: " + anon_rule)
+                tags_blank += 1
                 continue
 
             # tag is phi and
@@ -197,11 +206,16 @@ class dicom_class:
                   or "remove" in anon_rule
                   or (len(val) > 0 and "empty" in anon_rule)
                   or ("incrementdate" in anon_rule and yyyy > 1850)):
+                logging.debug("+++ isphi (defined rule) tag: " + tag + ", name: " 
+                              + data_element.name + ", anon_rule: " + anon_rule)
                 phi_rule.append(tag)
                 tags_isphi += 1
 
             # tag matched=is_phi, undefined rule
             else:
+                logging.debug("+++ isphi (undefined rule) tag: " + tag + ", name: "
+                              + data_element.name + ", val_len: " + str(len(val))
+                              + ", anon_rule: " + anon_rule)
                 phi_rule.append(tag)
                 tags_isphi += 1
 
@@ -211,15 +225,16 @@ class dicom_class:
             return 2, 'indeterminate', 'none', 'none'
 
         # construct return parameters
-        if tags_isphi == 0:
+        if tags_isphi == 0 and tags_nokey == 0:
             status = "not_phi"
         else:
             status = "is_phi"
 
         # we are done, print status and reason
         logging.info("process_dicom_file: status: " + status)
-        logging.info("process_dicom_file: reason: tag counts - total:" + str(tags_total) + " blank:" + str(tags_blank)
-                     + " nokey:" + str(tags_nokey) + " isphi:" + str(tags_isphi) + " nophi:" + str(tags_nophi))
+        logging.info("process_dicom_file: reason: tag counts - total:" + str(tags_total) 
+                     + " blank:" + str(tags_blank) + " nokey:" + str(tags_nokey) 
+                     + " isphi:" + str(tags_isphi) + " nophi:" + str(tags_nophi))
 
         return 0, status, str(phi_rule), str(undef_rule)
         #

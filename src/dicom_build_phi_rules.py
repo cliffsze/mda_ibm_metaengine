@@ -19,6 +19,11 @@ import csv
 #
 # Change Log:
 # 20150613 - initial release
+# 20150702 - convert all lookup to be case insensitive (change to lowercase before compare)
+#        tag - converted to lowercase alphabets
+#        name (key in dd dict) - converted to all lowercase
+#        anonymization_policy - converted all lowercase before append to dict
+# 21050702 - is_phi attribute converted to boolean value before append to dict
 #
 #
 # main program
@@ -49,9 +54,9 @@ for row in f:
         # skip blank line or comments
         pass
     else:
-        # key = attribute name, value = entire row
+        # key = attribute name (change to all lowercase), value = entire row
         attr = row.split('\t')        
-        dd[attr[2]].append(row)
+        dd[attr[2].lower()].append(row)
         count += 1
         
 f.close()
@@ -85,9 +90,9 @@ fi = open (dicom_phi_rules, 'r')
 reader = csv.reader(fi)
 for row in reader:
     
-    # match the phi rule name to a dd item 
+    # match the phi rule name to a dd item (use all lowercase)
     name = row[0].rstrip()
-    value = dd[name]
+    value = dd[name.lower()]
 
     if not value:
         # phi rule name does not match any dicom dictionary name
@@ -103,15 +108,19 @@ for row in reader:
         # extract attributes from matching dd line
         # Format: [Tag] [VR] [Name] [VM] [Version] - tab delimited
         attr = value[0].split('\t')
-        tag = attr[0]
+        tag = attr[0].lower()
         vr  = attr[1]
         vm  = attr[3]
         version = ''
         if len(attr) > 4:
             version = attr[4]
         
-        is_phi  = row[1].rstrip()
-        anonymization_policy = row[2].rstrip()
+        b = row[1].rstrip().capitalize()
+        if b == "False":
+            is_phi = False
+        else:
+            is_phi = True
+        anonymization_policy = row[2].rstrip().lower()
 
         # format output list object
         # Format: [Name] [VR] [VM] [version] [is_phi] [anonymization_rule]
