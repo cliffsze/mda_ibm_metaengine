@@ -24,6 +24,7 @@ import csv
 #        name (key in dd dict) - converted to all lowercase
 #        anonymization_policy - converted all lowercase before append to dict
 # 21050702 - is_phi attribute converted to boolean value before append to dict
+# 20150706 - changed dicon dictionary file format to csv - [Tag] [Name] [Keyword] [VR] [VM]
 #
 #
 # main program
@@ -42,21 +43,20 @@ print "output files: " + dicom_phi_rules_py
 
 
 # read dicom dictionary file into dd dictionary
-# Format: [Tag] [VR] [Name] [VM] [Version] - tab delimited
 dd = collections.defaultdict(list)
 f = open(dicom_dictionary,'r')
+reader = csv.reader(f)
 
 count = 0
-for row in f:
-    row = row.rstrip()
-    row = row.lstrip()
-    if len(row) == 0 or row[0] == '#':
+for row in reader:
+    if row[0].lower() == 'tag' or row[0] == '':
         # skip blank line or comments
         pass
     else:
-        # key = attribute name (change to all lowercase), value = entire row
-        attr = row.split('\t')        
-        dd[attr[2].lower()].append(row)
+        # Format: [Tag] [Name] [Keyword] [VR] [VM] - csv
+        # key = [Keyword] (lowercase), value = [Tag] [VR] [VM]
+        value = row[0] + "\t" + row[3] + "\t" + row[4]
+        dd[row[2].lower()].append(value)
         count += 1
         
 f.close()
@@ -106,14 +106,11 @@ for row in reader:
             comment = "    # dicom.dic has " + str(i) + " tags with same name: " + name
 
         # extract attributes from matching dd line
-        # Format: [Tag] [VR] [Name] [VM] [Version] - tab delimited
+        # Format: [Tag] [VR] [VM] - tab delimited
         attr = value[0].split('\t')
         tag = attr[0].lower()
         vr  = attr[1]
-        vm  = attr[3]
-        version = ''
-        if len(attr) > 4:
-            version = attr[4]
+        vm  = attr[2]
         
         b = row[1].rstrip().capitalize()
         if b == "False":
@@ -129,7 +126,7 @@ for row in reader:
         out.append(name)
         out.append(vr)
         out.append(vm)
-        out.append(version)
+        out.append(' ')
         out.append(is_phi)
         out.append(anonymization_policy)
 
