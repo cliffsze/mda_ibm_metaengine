@@ -1,6 +1,5 @@
 import sys
 import os
-import ConfigParser
 import logging
 import datetime
 import cad_config
@@ -221,7 +220,12 @@ class dicom_class:
 
         # error if tag counts don't match
         if tags_total != (tags_blank + tags_nokey + tags_isphi + tags_nophi):
-            logging.error("determine_phi_status: tag count mismatch")      
+            logging.error("process_dicom_file: tag count mismatch,"
+                          + " total:" + str(tags_total) 
+                          + " blank:" + str(tags_blank) 
+                          + " nokey:" + str(tags_nokey) 
+                          + " isphi:" + str(tags_isphi)
+                          + " nophi:" + str(tags_nophi))
             return 2, 'indeterminate', 'none', 'none'
 
         # construct return parameters
@@ -232,10 +236,12 @@ class dicom_class:
 
         # we are done, print status and reason
         logging.info("process_dicom_file: status: " + status)
-        logging.info("process_dicom_file: reason: tag counts - total:" + str(tags_total) 
-                     + " blank:" + str(tags_blank) + " nokey:" + str(tags_nokey) 
-                     + " isphi:" + str(tags_isphi) + " nophi:" + str(tags_nophi))
-
+        logging.info("process_dicom_file: reason: tag counts -"
+                     + " total:" + str(tags_total) 
+                     + " blank:" + str(tags_blank) 
+                     + " nokey:" + str(tags_nokey) 
+                     + " isphi:" + str(tags_isphi) 
+                     + " nophi:" + str(tags_nophi))
         return 0, status, str(phi_rule), str(undef_rule)
         #
         #

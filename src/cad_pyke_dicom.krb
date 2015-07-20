@@ -1,0 +1,113 @@
+
+# Filename : cad_pyke_rules.krb
+# Purpose  : Dicom PHI detection Pyke forward chaining rules base
+# Output: nophi_tag, blank_tag, 
+
+# Change Log:
+# 20150715 - initial release
+
+
+
+not_phi
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_not_phi($tag, $_name, $_rule)
+    assert
+        dicom_file.nophi_tag($tag)
+        python print "not phi: " + $tag
+
+
+    
+not_phi_blank_value
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'empty()')
+        check $value == ''
+    assert
+        dicom_file.blank_tag($tag)
+        python print "not phi blank value: " + $tag
+        
+        
+
+is_phi_unknown_tag
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        notany
+            dicom_phi_rules.universal_fact_is_phi($tag, $_name, $_rule)
+        notany
+            dicom_phi_rules.universal_fact_not_phi($tag, $_name, $_rule)
+    assert
+        dicom_file.nokey_tag($tag)
+        python print "is phi unknown tag: " + $tag 
+
+
+
+is_phi_no_rule
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, '')
+    assert
+        dicom_file.isphi_tag($tag)
+        python print "is phi no rule: " + $tag
+
+
+
+is_phi_empty
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'empty()')
+        check $value != ''
+    assert
+        dicom_file.isphi_tag($tag)
+        python print "is phi empty: " + $tag
+
+
+
+is_phi_remove
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'remove()')
+    assert
+        dicom_file.isphi_tag($tag)
+        python print "is phi remove: " + $tag
+
+
+
+is_phi_incrementdate
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'incrementdate(this|@dateinc)')
+        # check $value > 18500000
+    assert
+        dicom_file.isphi_tag($tag)
+        python print "is phi incrementdate: " + $tag + ", value=" + $value
+
+
+
+is_phi_unknown_rule
+    foreach
+        dicom_file.attribute_is($tag, $value)
+        dicom_phi_rules.universal_fact_is_phi($tag, $_name, $_rule)
+        notany
+            dicom_phi_rules.universal_fact_is_phi($tag, $_name, '')
+        notany
+            dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'empty()')
+        notany
+            dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'remove()')
+        notany
+            dicom_phi_rules.universal_fact_is_phi($tag, $_name, 'incrementdate(this|@dateinc)')
+    assert
+        dicom_file.isphi_tag($tag)
+        python print "is phi unknown rule: " + $tag
+
+
+
+
+
+
+
+
+
+
+
+
