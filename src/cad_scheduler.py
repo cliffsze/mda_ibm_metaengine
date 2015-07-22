@@ -3,7 +3,7 @@ import os
 import logging
 import cad_config
 import cad_gpfs_ingest
-#import cad_meta_ingest
+import cad_meta_ingest
 import cad_analyze_vcf
 import cad_analyze_dicom
 
@@ -30,16 +30,20 @@ try:
     
     
     # run metadata scan to collect new files
-    if cad_config.gpfs['use_gpfs_scan'].capitalize():
+    days = int(cad_config.scheduler['job_delta_days'])
+    
+    if cad_config.gpfs['use_gpfs_scan'].lower() == 'yes':
         logging.info("main: start file system scan using GPFS policy engine")
         gpfs = cad_gpfs_ingest.gpfs_class()
-        days = int(cad_config.scheduler['job_delta_days'])
         rc = gpfs.apply_query_policy(days)
         logging.info("main: gpfs metadata scan, rc=" + str(rc))
     
     else:
         logging.info("main: start file system scan using os.walk")
-    
+        meta = cad_meta_ingest.meta_class()
+        rc = meta.ingest_metadata(days)
+        logging.info("main: ingest_metadata, rc=" + str(rc))
+        
     
     # retrieve and process new vcf files
     logging.info("main: start vcf file processing")

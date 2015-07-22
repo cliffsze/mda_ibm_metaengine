@@ -6,6 +6,7 @@ import cad_config
 import meta_api
 import dicom
 import dicom_phi_rules
+import cad_pyke_dicom
 
 
 # Filename : cad_analyze_dicom.py
@@ -97,7 +98,10 @@ class dicom_class:
 
             # analyze new vcf file
             if not file in processed_items:
-                (rc, status, phi_rule, undef_rule) = self.process_dicom_file(file)
+                if cad_config.dicom['use_pyke_algorithm'].lower() =='yes':
+                    (rc, status, phi_rule, undef_rule) = cad_pyke_dicom.process_dicom_file(file)
+                else:
+                    (rc, status, phi_rule, undef_rule) = self.process_dicom_file(file)
 
                 # dicom analysis successful
                 if rc == 0:
