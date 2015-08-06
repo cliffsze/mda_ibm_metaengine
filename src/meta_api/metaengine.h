@@ -1,7 +1,7 @@
 #ifndef _METAENGINE_H
 #define _METAENGINE_H
 
-#define ME_STRING_MAX_LENGTH 1024
+#define ME_STRING_MAX_LENGTH 32768
 
 redisContext *MEconnectRedis(const char *hostname, const int port);
 int MEaddNewKeyValue(redisContext *c, const char *key, const char *value);

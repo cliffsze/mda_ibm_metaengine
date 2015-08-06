@@ -6,6 +6,7 @@ import cad_gpfs_ingest
 import cad_meta_ingest
 import cad_analyze_vcf
 import cad_analyze_dicom
+import cad_report
 
 
 # Filename : cad_scheduler.py
@@ -59,6 +60,12 @@ try:
     logging.info("main: dicom analysis, rc=" + str(rc))
     
 
+    # generate csv reports
+    rc = cad_report.generate_report(search='vcf', list_history=False)
+    rc = cad_report.generate_report(search='dicom', list_history=False)
+
+    
+    
 except KeyError:
     sys.exit("abort")
 

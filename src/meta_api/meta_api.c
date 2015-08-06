@@ -22,7 +22,6 @@
 #include "metaengine.h"
 
 
-
 // global variables
 redisContext *dbhandle;
 int *debugMode;    // 1=true, 0=false
@@ -227,6 +226,74 @@ static PyObject * pyGetUnprocessedRecord(PyObject *self, PyObject *args) {
 
 
 
+// python def : (rc, dict) = get_records( search_key, search_value )
+// find records matches the search_key and return list of items
+// rc: 0=success, 1=input format error, 2=search_key - no match found
+// dict: (recid: recid[searchKey] ...)
+
+
+
+static PyObject * pyGetRecords(PyObject *self, PyObject *args) {
+
+    // retrieve 2 input parameters in char * format
+    char *searchKey, *searchVal;
+    if (!PyArg_ParseTuple(args, "ss", &searchKey, &searchVal)) {
+        return Py_BuildValue("i", 1);   // ERROR - PyArg_ParseTuple
+    }
+
+    // get all recID that matches the searckKey and searchVal
+    int *allId;
+    unsigned recCount;
+    MEsearchId(dbhandle, searchKey, searchVal, &allId, &recCount);
+    if (recCount == 0) {
+        return Py_BuildValue("i", 2);   // ERROR - no record found
+    }
+
+    // build output dict object
+    int rc, i, j;
+    unsigned size;
+    long recid, dict_size;
+    char *allData, *key, *val;
+    PyObject* py_rdict;
+    PyObject* py_adict;
+    PyObject* py_key;
+    PyObject* py_val;
+    py_rdict = PyDict_New();
+    py_adict = PyDict_New();
+
+    // loop through all recIDs
+    for ( i=0; i<recCount; ++i ) {
+        recid = *(allId+i);
+        PyDict_Clear(py_adict);
+
+        // create kv and add to py_dict (recid: recid[searchKey])
+        MEgetAllFieldsById(dbhandle, recid, &allData, &size);
+        for (j=0; j<size; j+=2) {
+            key = allData+j*ME_STRING_MAX_LENGTH;
+            val = allData+(j+1)*ME_STRING_MAX_LENGTH;
+            if (debugMode) {
+                printf( "%i: %s %s\n", recid, key, val);
+            }
+            py_key = PyString_FromString(key);
+            py_val = PyString_FromString(val);
+            PyDict_SetItem(py_adict, py_key, py_val);
+        }
+        py_key = PyInt_FromLong(recid);
+        PyDict_SetItem(py_rdict, py_key, PyDict_Copy(py_adict));
+        free(allData);
+    }
+    free(allId);
+    
+    if (debugMode) {
+        printf("pyGetRecords: records retrieved: %i\n", recCount);
+    }
+
+    // return 2 parameters: rc, dict
+    return Py_BuildValue("iO", 0, py_rdict);
+}
+
+
+
 /* bind python function names to c functions */
 
 
@@ -236,6 +303,7 @@ static PyMethodDef MetaApiMethods[] = {
     {"add_new_record", pyAddNewRecord, METH_VARARGS},
     {"append_to_record", pyAppendToRecord, METH_VARARGS},
     {"get_unprocessed_record", pyGetUnprocessedRecord, METH_VARARGS},
+    {"get_records", pyGetRecords, METH_VARARGS},
     {NULL, NULL}
 };
 
