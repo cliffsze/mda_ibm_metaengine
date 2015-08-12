@@ -20,6 +20,7 @@ import vcf
 # 20150625 - use cad_config.conf parameters
 # 20150625 - process one or more
 # 20150625 - read from metaengine and save status to metaengine
+# 20150811 - process_vcf_file - reason message updated
 #
 #
 # class - vcf_class
@@ -136,9 +137,10 @@ class vcf_class:
             logging.debug("+++ germlinesomatic_ratio=" + str(germlinesomatic_ratio))
             if ( germlinesomatic_ratio > pii_thres):
                 status = "is_pii"
+                reason = ("total germlinesomatic/total samples > " + str(pii_thres))
             else:
                 status = "not_pii"
-            reason = ("total germlinesomatic/total samples > " + str(pii_thres))
+                reason = ("total germlinesomatic/total samples < " + str(pii_thres))
             rc = 0
 
         except ValueError:
